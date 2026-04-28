@@ -1,20 +1,22 @@
-version: "3.8"
+
 
 services:
   # PostgreSQL Database
- postgres:
+  postgres:
     image: postgres:13
+    env_file:
+      - .env
     environment:
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=airflow
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "5444:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
       interval: 5s
       retries: 5
     restart: always
@@ -25,25 +27,45 @@ services:
       context: ./api
       dockerfile: Dockerfile
     ports:
-      - "8080:8000"
+      - "8000:8000"
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-
+  # airflow-init:
+  airflow-init:
+    image: apache/airflow:2.7.3
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres/${DB_NAME}
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    env_file:
+    - .env 
+    volumes:
+      -  ./logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: bash -c "airflow db upgrade && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
   # Airflow Webserver
   airflow-webserver:
     build:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - postgres
-      - api
+       postgres:
+          condition: service_healthy
+       api:
+          condition: service_healthy
+       airflow-init:
+          condition: service_completed_successfully
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres/${DB_NAME}
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
       - AIRFLOW_UID=50000
@@ -55,28 +77,31 @@ services:
       - ./logs:/opt/airflow/logs
     ports:
       - "8080:8080"
-    command: >
-      bash -c "airflow db init &&
-               airflow db upgrade &&
-               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
-               airflow webserver"
+    command: webserver
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
+      interval: 30s
+      timeout: 10s
       retries: 5
+      start_period: 90s
 
   # Airflow Scheduler
   airflow-scheduler:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - .env
     depends_on:
-      - postgres
-      - airflow-webserver
+        postgres:
+          condition: service_healthy
+        airflow-webserver:
+            condition: service_healthy
+        airflow-init:
+          condition: service_completed_successfully 
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@postgres/${DB_NAME}
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW_UID=50000
     volumes:
@@ -86,6 +111,24 @@ services:
       - ./data:/opt/airflow/data
       - ./logs:/opt/airflow/logs
     command: airflow scheduler
+  # backup
+  db-backup:
+    image: prodrigestivill/postgres-backup-local:13
+    restart: always
+    env_file:
+      - .env
+    environment:
+    - POSTGRES_HOST=postgres
+    - POSTGRES_DB=${DB_NAME}
+    - POSTGRES_USER=${DB_USER}
+    - POSTGRES_PASSWORD=${DB_PASSWORD}
+    - SCHEDULE=@daily
+    - BACKUP_KEEP_DAYS=7
+    volumes:
+    - ./backups:/backups
+    depends_on:
+    - postgres
 
 volumes:
   postgres-db-volume:
+

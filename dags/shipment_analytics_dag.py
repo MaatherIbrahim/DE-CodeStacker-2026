@@ -68,4 +68,4 @@ load_analytics_task = PythonOperator(
 )
 
 # Define task dependencies
-[extract_shipments_task, extract_tiers_task] >> transform_task >> load_analytics_task
+extract_tiers_task >> extract_shipments_task >> transform_task >> load_analytics_task

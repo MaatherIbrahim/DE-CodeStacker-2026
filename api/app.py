@@ -38,6 +38,7 @@ SHIPMENTS = [
     {"shipment_id": "SHP018", "customer_id": "CUST002", "shipping_cost": 33.75, "shipment_date": "2024-03-15", "status": "delivered"},
     {"shipment_id": "SHP019", "customer_id": "CUST006", "shipping_cost": 44.50, "shipment_date": "2024-03-20", "status": "delivered"},
     {"shipment_id": "SHP020", "customer_id": "CUST004", "shipping_cost": 27.00, "shipment_date": "2024-03-25", "status": "delivered"},
+    {'shipment_id': 'SHP021',  'customer_id': 'CUST007', 'shipping_cost': 150.0, 'shipment_date': '2024-04-21', 'status': 'delivered'},
 ]
 
 # Counter for request tracking
@@ -92,6 +93,10 @@ def get_shipment(shipment_id):
     if shipment:
         return jsonify(shipment), 200
     return jsonify({"error": "Shipment not found"}), 404
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "up"}), 200
 
 if __name__ == '__main__':
     print("Starting Mock Shipment API on port 8000...")

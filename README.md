@@ -1,194 +1,87 @@
-# 🏗 The 2026 Rihal Data Engineering Talent Challenge
+# 🏗️ Rihal Data Engineering Challenge 2026: The Broken Pipeline
 
-Welcome to the Rihal Data Engineering Challenge! You have inherited a partially implemented data pipeline that processes shipment data for internal reporting.
-
-## 📋 Challenge Overview
-
-Your task is to **audit, improve, and harden** this data pipeline to make it production-ready. The system currently runs, but should not be assumed to be correct, reliable, or scalable.
+This repository contains a hardened, production-ready data pipeline transformed from a legacy "broken" state. The system ingests shipment data from a REST API and customer information from a CSV file to produce analytical reports on shipping spend.
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Docker Desktop installed and running
-- Docker Compose
-- At least 4GB of available RAM
+### 1. Prerequisites
+* Docker & Docker Compose
+* Python 3.9+ (For local testing)
 
-### Setup Instructions
+### 2. Environment Setup
+Create a `.env` file from the provided template:
+```
+cp .env.example .env
+```
+Open the `.env` file and set your desired `DB_PASSWORD`. 
 
-1. **Clone or extract this repository**
+**Note:** The system is pre-configured with default values for Docker internal networking (`DB_HOST=postgres`, `DB_PORT=5432`). Do not change these unless you are modifying the Docker network.
 
-2. **Start the services**
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Wait for services to initialize** (about 2-3 minutes)
-   - Airflow UI will be available at: http://localhost:8080
-   - Mock API at: http://localhost:8000
-   - PostgreSQL at: localhost:5432
-
-4. **Access Airflow**
-   - URL: http://localhost:8080
-   - Username: `admin`
-   - Password: `admin`
-
-5. **Run the pipeline**
-   - Navigate to the DAG: `shipment_analytics_pipeline`
-   - Enable the DAG (toggle switch on the left)
-   - Click the "Play" button to trigger a manual run
-
-6. **Check the results**
-   ```bash
-   docker-compose exec postgres psql -U airflow -d airflow -c "SELECT * FROM analytics.shipping_spend_by_tier ORDER BY year_month, tier;"
-   ```
-
-### Stopping the Services
-
-```bash
-docker-compose down
+### 3. Initialize Local Directories
+Before launching, you must manually create the following directories to ensure correct Docker volume permissions for logging and backups:
+```
+mkdir logs
+mkdir backups
 ```
 
-To remove all data and start fresh:
-```bash
-docker-compose down -v
+### 4. Launch the Pipeline
+Run the following command to build and start the entire stack:
+```
+docker-compose up -d
+```
+The system will automatically initialize the database, run migrations, and create an admin user.
+
+### 5. Access the UI
+* **Airflow:** http://localhost:8080 (Credentials: `admin` / `admin`)
+* **API:** http://localhost:8000/api/shipments
+
+---
+
+## 🛠️ System Architecture
+
+This pipeline implements a **Medallion (Multi-Tier) Architecture** to ensure data lineage and integrity:
+
+1. **`raw_data` Schema:** Immutable landing zone. All data from API and CSV is stored here in its original state for auditing and reprocessing.
+2. **`staging` Schema:** The "Cleaning" layer. Filters out invalid records (negative costs, null identifiers, duplicates) and enforces Primary/Foreign Key constraints.
+3. **`analytics` Schema:** The "Reporting" layer. Pre-aggregated summaries optimized for business intelligence, providing **Total Shipping Spend per Tier per Month**.
+
+---
+
+## 🔒 Key Engineering Improvements
+
+* **Security:** Moved from hardcoded strings to an environment-driven configuration (.env). Refactored all SQL logic to use parameterized queries to prevent SQL Injection.
+* **Data Integrity:** Implemented Idempotency using TRUNCATE and ON CONFLICT (UPSERT) logic, ensuring the pipeline can be rerun safely without corrupting data.
+* **Resilience:** Added try-except-finally blocks to all Python scripts for atomic transactions and resource cleanup.
+* **Disaster Recovery:** Integrated an automated backup service that generates daily compressed SQL snapshots in the `./backups` directory.
+* **Observability:** Persisted Airflow system logs to the host `./logs` directory for permanent auditability.
+
+---
+
+## 🧪 Testing
+
+This project uses pytest and uv to validate critical business logic (such as data validation and filtering rules).
+
+To run the tests locally:
+```
+uv run pytest
 ```
 
-## 📁 Project Structure
+---
 
-```
-.
-├── dags/                          # Airflow DAG definitions
-│   └── shipment_analytics_dag.py
-├── scripts/                       # Pipeline scripts
-│   ├── extract_shipments.py      # Extract from API
-│   ├── extract_customer_tiers.py # Extract from CSV
-│   ├── transform_data.py         # Transform and join
-│   └── load_analytics.py         # Load analytics
-├── sql/                           # SQL scripts
-│   └── init.sql                  # Database initialization
-├── data/                          # Source data files
-│   └── customer_tiers.csv
-├── api/                           # Mock external API
-│   ├── app.py
-│   └── Dockerfile
-├── tests/                         # Your tests go here
-├── docker-compose.yml
-├── Dockerfile
-└── README.md
-```
+## 📊 Database Connection (External)
+To explore the data using external tools (e.g., DbVisualizer, DBeaver), use the following credentials:
+* **Host:** 127.0.0.1
+* **Port:** 5444 (Mapped from internal 5432 to avoid host-level conflicts)
+* **Database:** rihal_data
+* **User:** airflow
 
-## 📊 Data Flow
+---
 
-1. **Extract Shipment Data** - Fetch from REST API (`http://api:8000/api/shipments`)
-2. **Extract Customer Tiers** - Load from CSV file
-3. **Transform** - Join shipments with customer tier information
-4. **Load Analytics** - Calculate total shipping spend per customer tier per month
+## 📝 Documentation
+For detailed insights into the engineering decisions and audit findings, please refer to:
+* `ENGINEERING_AUDIT.md`: Detailed list of discovered weaknesses and their mitigations.
+* `DESIGN_REFLECTION.md`: Reflection on trade-offs, scalability, and design patterns.
 
-## 🎯 Your Responsibilities
+---
 
-### Task 1: Engineering Audit
-Create `ENGINEERING_AUDIT.md` documenting:
-- Critical weaknesses in the current system
-- Severity ranking (High/Medium/Low)
-- Potential production impact
-- How you mitigated each issue
-
-### Task 2: Improve the Pipeline
-Make the pipeline production-ready by demonstrating engineering best practices:
-- Data Integrity & Consistency
-- Fault Tolerance & Resilience
-- Security & Compliance
-- Maintainability & Observability
-- Scalability Considerations
-
-### Task 3: Data Integrity & Modeling
-Ensure correct analytical output:
-- **Total Shipping Spend per Customer Tier per Month**
-
-Requirements:
-- Logical data modeling
-- Correct handling of conflicting/duplicate records
-- Clear transformation boundaries
-- Consistent aggregation logic
-
-### Task 4: Testing (Mandatory)
-Create meaningful tests in the `tests/` folder that validate:
-- Core transformation logic behaves as expected
-- Rerunning the pipeline does not corrupt results
-- Critical edge cases are handled correctly
-
-### Task 5: Design Reflection
-Create `DESIGN_REFLECTION.md` answering:
-- What was the most critical issue you discovered?
-- What trade-offs did you make?
-- Where could your solution still fail?
-- How would this system behave at 100x data volume?
-- What would you redesign with more time?
-
-Plus:
-- Explain one complex function line-by-line
-- Explain one SQL transformation step-by-step
-- Describe one alternative design you considered and rejected
-
-## 📤 Submission Requirements
-
-Your submission must include:
-- [ ] All code runs via `docker-compose up`
-- [ ] No manual database intervention required
-- [ ] No hardcoded credentials
-- [ ] `ENGINEERING_AUDIT.md`
-- [ ] `DESIGN_REFLECTION.md`
-- [ ] Meaningful tests in `tests/`
-- [ ] Updated `README.md` with any new setup instructions
-
-## ⚙️ Technical Stack
-
-**Required Technologies:**
-- Apache Airflow
-- Docker & docker-compose
-- Python 3.9+
-- PostgreSQL
-- SQL
-
-You may restructure or refactor as needed, but these core technologies must remain.
-
-## 🔍 Useful Commands
-
-### View Logs
-```bash
-# Airflow logs
-docker-compose logs airflow-scheduler -f
-
-# API logs
-docker-compose logs api -f
-
-# Database logs
-docker-compose logs postgres -f
-```
-
-### Connect to Database
-```bash
-docker-compose exec postgres psql -U airflow -d airflow
-```
-
-### Check API
-```bash
-curl http://localhost:8000/api/shipments | jq
-```
-
-### Restart Services
-```bash
-docker-compose restart airflow-scheduler airflow-webserver
-```
-
-## 💡 Tips
-
-- Start by running the pipeline and observing its behavior
-- Check what data ends up in the database
-- Try running the pipeline multiple times
-- Look for edge cases in the source data
-- Consider what could go wrong in production
-- Think about data quality and consistency
-
-
-**Good luck! We're excited to see your approach to improving this system.**
+**Developed for the Rihal Data Engineering Talent Challenge 2026.**

@@ -5,7 +5,7 @@ airflow.db
 airflow-webserver.pid
 standalone_admin_password.txt
 webserver_config.py
-
+backups/
 # Python
 __pycache__/
 *.py[cod]
